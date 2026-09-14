@@ -14,6 +14,7 @@
 # Environment variables:
 #   REPO        - GitHub repository as owner/name (default: forghani77/pathrelay)
 #   PREFIX      - installation prefix (default: /usr/local)
+#   FORCE_SHELL - force the shell for completion install (bash|zsh|fish)
 #   RELEASE_URL - release download base URL
 #                 (default: https://github.com/$REPO/releases/download)
 
