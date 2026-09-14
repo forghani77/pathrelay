@@ -111,16 +111,56 @@ info "Installed $BIN_DIR/$name ($VERSION)"
 # ("pathrelay completion <shell>") and written to the right location for the
 # detected shell. System-wide dirs are used when writable (or running as
 # root); otherwise user-level locations are used.
+#
+# Detection order:
+#   1. FORCE_SHELL environment variable (explicit override)
+#   2. $SHELL (the login shell)
+#   3. the parent process (the shell that invoked this script; login shells
+#      appear as "-bash", so the leading dash is stripped)
+#   4. the user's login shell from the password database
+
+normalize_shell() {
+    # "-/bin/bash" or "/usr/bin/fish.exe" -> "bash" / "fish" (POSIX-safe)
+    b=${1##*/}
+    b=${b#-}
+    b=${b%.exe}
+    b=${b%.sh}
+    printf '%s\n' "$b"
+}
 
 detect_shell() {
-    if [ -n "${SHELL:-}" ]; then
-        basename "$SHELL"
+    # 1. Explicit override
+    if [ -n "${FORCE_SHELL:-}" ]; then
+        normalize_shell "$FORCE_SHELL"
         return
     fi
-    if command -v ps >/dev/null 2>&1; then
-        comm="$(ps -p $$ -o comm= 2>/dev/null | tr -d '[:space:]')"
+    # 2. Login shell from the environment
+    if [ -n "${SHELL:-}" ]; then
+        normalize_shell "$SHELL"
+        return
+    fi
+    # 3. The shell that invoked this script (parent process)
+    if command -v ps >/dev/null 2>&1 && [ -n "${PPID:-}" ]; then
+        comm="$(ps -p "$PPID" -o comm= 2>/dev/null | tr -d '[:space:]')"
         if [ -n "$comm" ]; then
-            basename "$comm"
+            normalize_shell "$comm"
+            return
+        fi
+    fi
+    # 4. Login shell from the password database
+    uid="$(id -u 2>/dev/null || true)"
+    if [ -n "$uid" ] && command -v getent >/dev/null 2>&1; then
+        sh="$(getent passwd "$uid" 2>/dev/null | cut -d: -f7)"
+        if [ -n "$sh" ]; then
+            normalize_shell "$sh"
+            return
+        fi
+    fi
+    user="${USER:-${LOGNAME:-}}"
+    if [ -n "$user" ] && [ -r /etc/passwd ]; then
+        sh="$(grep "^${user}:" /etc/passwd | cut -d: -f7 | tail -n1)"
+        if [ -n "$sh" ]; then
+            normalize_shell "$sh"
             return
         fi
     fi
@@ -159,11 +199,11 @@ install_completion() {
     shell_name="$1"
     dest="$(completion_dest "$shell_name")"
     mkdir -p "$(dirname "$dest")"
-    if "$BIN_DIR/$name" completion "$shell_name" > "$dest" 2>/dev/null; then
+    if "$BIN_DIR/$name" completion "$shell_name" > "$dest" 2>"$tmpdir/comp.err"; then
         info "Installed $shell_name completion: $dest"
     else
         rm -f "$dest"
-        info "warning: failed to generate $shell_name completion (skipping)"
+        info "warning: failed to generate $shell_name completion (skipping): $(cat "$tmpdir/comp.err")"
         return
     fi
 
@@ -182,12 +222,14 @@ install_completion() {
 }
 
 current_shell="$(detect_shell)"
+info "Detected shell: ${current_shell}"
 case "$current_shell" in
     bash|zsh|fish)
         install_completion "$current_shell"
         ;;
     *)
         info "note: unsupported or unknown shell '${current_shell:-}', skipping completion install"
+        info "note: you can force one with FORCE_SHELL=bash|zsh|fish and re-run"
         ;;
 esac
 
