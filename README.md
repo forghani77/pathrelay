@@ -44,12 +44,18 @@ PREFIX=$HOME/.local ./install.sh   # custom prefix
 The script verifies the tarball against `checksums.txt` (SHA-256) before
 installing to `$PREFIX/bin/pathrelay`.
 
-It also **auto-detects your login shell** (`$SHELL`) and installs shell
-completion for it — system-wide (`/etc/bash_completion.d`, zsh
-`site-functions`) when writable, otherwise user-level
-(`~/.local/share/bash-completion`, `~/.local/share/zsh/site-functions`,
-`~/.config/fish/completions`). Shells other than bash/zsh/fish are skipped
-with a note.
+It also installs **shell completion for every supported shell found on the
+system** — bash, zsh and fish:
+
+- **bash**: `/etc/bash_completion.d` when the bash-completion package is
+  present; otherwise a guarded eval block in `~/.bashrc` (plus a
+  `.bash_profile` source line for login shells; skipped on bash < 4.4)
+- **zsh**: a writable system `site-functions` dir; otherwise a guarded eval
+  block in `~/.zshrc` (works regardless of `fpath`/`compinit` setup)
+- **fish**: `~/.config/fish/completions`
+
+Force a single shell with `FORCE_SHELL=bash|zsh|fish`. When run under `sudo`,
+rc files are edited for the invoking user, not root.
 
 ### From source
 
