@@ -19,7 +19,8 @@ client ──▶ pathrelay ──▶ SOCKS5 / HTTP CONNECT proxy ──▶ upstr
 - Redirects are never followed (`http.ErrUseLastResponse`)
 - `pathrelay install` — installs binary, shell completions (bash/zsh/fish) and
   a hardened systemd service built from the flags you pass
-- `pathrelay uninstall` — removes everything again
+- `pathrelay uninstall` — stops and removes the systemd service (binary and
+  completions are kept)
 - Dynamic shell completion built in (cobra)
 
 ## Install
@@ -112,7 +113,8 @@ sudo pathrelay install --listen :80 --target https://mydomain:2096 --http 10.0.0
 3. Writes `/etc/systemd/system/pathrelay.service`, runs `systemctl daemon-reload`
    and `systemctl enable --now pathrelay.service`
 
-The unit runs under a `DynamicUser` with `ProtectSystem=strict`,
+The unit runs under a `DynamicUser` with `CAP_NET_BIND_SERVICE` (so it can
+bind privileged ports like `:80`), `ProtectSystem=strict`,
 `NoNewPrivileges`, `PrivateTmp`, `PrivateDevices` and other hardening options
 enabled, and restarts on failure.
 
@@ -132,8 +134,9 @@ unit file is rewritten and the service restarted.
 sudo pathrelay uninstall
 ```
 
-Stops and disables the service, removes the unit file, completion scripts and
-the installed binary.
+Stops and disables the service and removes the unit file. The binary and
+shell completions are **kept** — only the service is removed. Delete
+`/usr/local/bin/pathrelay` manually if you want to remove those too.
 
 ## Shell completion
 

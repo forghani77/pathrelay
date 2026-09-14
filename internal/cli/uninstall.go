@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"pathrelay/internal/shellcomp"
 	"pathrelay/internal/sysd"
 )
 
@@ -16,10 +15,10 @@ import (
 func NewUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Stop and remove the systemd service, completion scripts and binary",
-		Long: `Uninstall reverses everything install did: stops and disables the
-systemd service, removes the unit file, deletes the completion scripts
-and removes the binary from /usr/local/bin.
+		Short: "Stop and remove the systemd service (binary and completions are kept)",
+		Long: `Uninstall stops and disables the pathrelay systemd service and
+removes its unit file. The binary and shell completions are left in
+place — only the service is removed.
 
   sudo pathrelay uninstall
 
@@ -38,54 +37,20 @@ func runUninstall() error {
 		return errors.New("uninstall requires root; try: sudo pathrelay uninstall")
 	}
 
-	warns := 0
-	warnf := func(format string, args ...any) {
-		fmt.Fprintf(os.Stderr, "warning: "+format+"\n", args...)
-		warns++
+	if !sysd.Available() {
+		return errors.New("systemd is not available on this system; nothing to uninstall")
 	}
 
-	// 1. Systemd service
-	if sysd.Available() {
-		removed, err := sysd.Uninstall()
-		switch {
-		case err != nil:
-			warnf("removing systemd service: %v", err)
-		case removed:
-			fmt.Printf("removed service:       %s\n", sysd.UnitPath)
-		default:
-			fmt.Printf("no service:            %s not present\n", sysd.UnitPath)
-		}
-	} else {
-		fmt.Println("skipped service:       systemd not available on this system")
-	}
-
-	// 2. Completions
-	removedComps, missing, err := shellcomp.Remove()
+	removed, err := sysd.Uninstall()
 	switch {
 	case err != nil:
-		warnf("removing completions: %v", err)
+		return fmt.Errorf("removing systemd service: %w", err)
+	case removed:
+		fmt.Printf("removed service:    %s\n", sysd.UnitPath)
+		fmt.Printf("binary kept:        %s\n", sysd.BinPath)
+		fmt.Println("completions kept (see 'pathrelay completion --help')")
 	default:
-		for _, path := range removedComps {
-			fmt.Printf("removed completion:    %s\n", path)
-		}
-		for _, path := range missing {
-			fmt.Printf("no completion:         %s not present\n", path)
-		}
-	}
-
-	// 3. Binary
-	removedBin, err := sysd.RemoveBinary()
-	switch {
-	case err != nil:
-		warnf("removing binary: %v", err)
-	case removedBin:
-		fmt.Printf("removed binary:        %s\n", sysd.BinPath)
-	default:
-		fmt.Printf("no binary:             %s not present\n", sysd.BinPath)
-	}
-
-	if warns > 0 {
-		return fmt.Errorf("uninstall finished with %d warning(s)", warns)
+		fmt.Printf("no service:         %s not present\n", sysd.UnitPath)
 	}
 	return nil
 }

@@ -61,6 +61,9 @@ Type=simple
 ExecStart={{.ExecStart}}
 Restart=on-failure
 RestartSec=5
+# Allow binding privileged ports (e.g. :80) as the dynamic user
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 # Hardening
 DynamicUser=yes
 NoNewPrivileges=yes
