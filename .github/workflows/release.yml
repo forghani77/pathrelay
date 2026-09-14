@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (e.g. v0.1.0); created on the current commit if it does not exist"
+        required: true
 
 permissions:
   contents: write
@@ -26,7 +31,7 @@ jobs:
 
       - name: Build release artifacts
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
           mkdir -p dist
           LDFLAGS="-s -w -X pathrelay/internal/version.Version=${VERSION}"
@@ -42,7 +47,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
           gh release create "$VERSION" \
             --title "pathrelay $VERSION" \
