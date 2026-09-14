@@ -186,6 +186,27 @@ target_home() {
     printf '%s' "${HOME:-}"
 }
 
+# ensure_rc_source_block appends an idempotent, guarded block that sources
+# a completion file at shell startup. Shares the same markers as
+# ensure_rc_block, so a given rc file only ever gets one of the two.
+ensure_rc_source_block() {
+    rc_file="$1"
+    comp_file="$2"
+    marker_begin="# >>> pathrelay completion >>>"
+
+    if [ -f "$rc_file" ] && grep -qF "$marker_begin" "$rc_file"; then
+        return
+    fi
+    {
+        printf '\n%s\n' "$marker_begin"
+        printf '# Added by pathrelay install.sh; safe to remove.\n'
+        printf 'if [ -f %s ]; then\n' "'$comp_file'"
+        printf '  . %s\n' "'$comp_file'"
+        printf 'fi\n'
+        printf '%s\n' "# <<< pathrelay completion <<<"
+    } >> "$rc_file"
+}
+
 # ensure_rc_block appends an idempotent, guarded completion block to an rc
 # file. The eval-based approach works regardless of fpath/compinit
 # configuration and cleans itself up if the binary is removed.
@@ -218,21 +239,27 @@ ensure_rc_block() {
 install_bash_completion() {
     home="$1"
 
-    # System-wide only if the bash-completion package (or /etc hook) exists
-    # and the dir is writable. The generated script needs bash >= 4.4.
+    # System-wide install when the bash-completion package (or /etc hook)
+    # exists and the dir is writable. The generated script needs bash >= 4.4.
     if { [ -r /usr/share/bash-completion/bash_completion ] || [ -r /etc/bash_completion ]; } \
        && is_usable_dir /etc/bash_completion.d; then
         if "$BIN_DIR/$name" completion bash 2>"$tmpdir/comp.err" > "/etc/bash_completion.d/$name"; then
             info "Installed bash completion: /etc/bash_completion.d/$name"
-            return
+            # Wire it explicitly into the user's bashrc. The package loader
+            # is lazy (loads on first TAB) and may not be sourced in every
+            # setup; an explicit source line guarantees it always loads.
+            ensure_rc_source_block "$home/.bashrc" "/etc/bash_completion.d/$name"
+            info "Wired into $home/.bashrc (loads the system completion file)"
+        else
+            info "warning: failed to write /etc/bash_completion.d/$name: $(cat "$tmpdir/comp.err")"
         fi
-        info "warning: failed to write /etc/bash_completion.d/$name: $(cat "$tmpdir/comp.err")"
+    else
+        # No bash-completion package: use an rc-file eval block instead.
+        # Works on any bash >= 4.4; on ancient bash (macOS default 3.2) the
+        # version guard in the block skips it instead of erroring.
+        ensure_rc_block "$home/.bashrc" bash
+        info "Added bash completion to $home/.bashrc"
     fi
-
-    # Fallback: rc-file eval block. Works on any bash >= 4.4; on ancient
-    # bash (macOS default 3.2) the version guard in the block skips it
-    # instead of erroring.
-    ensure_rc_block "$home/.bashrc" bash
 
     # Login shells read .bash_profile, not .bashrc — make sure it chains.
     prof="$home/.bash_profile"
@@ -243,7 +270,6 @@ install_bash_completion() {
         printf '\n# >>> pathrelay completion >>>\n[ -f ~/.bashrc ] && . ~/.bashrc\n# <<< pathrelay completion <<<\n' >> "$prof"
         info "Added .bashrc source line to $prof"
     fi
-    info "Added bash completion to $home/.bashrc"
 }
 
 install_zsh_completion() {
