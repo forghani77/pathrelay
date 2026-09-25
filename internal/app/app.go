@@ -2,6 +2,7 @@
 package app
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -50,6 +51,9 @@ func (c Config) Run() error {
 		ResponseHeaderTimeout: 30 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 	}
+	// Verification is skipped by design: the upstream is typically reached
+	// through a SOCKS/CONNECT tunnel with a self-signed or mismatched cert.
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // intentional: relay to targets with self-signed certs
 	if outbound != nil {
 		transport.Dial = func(network, addr string) (net.Conn, error) {
 			return outbound.Dial(network, addr)
@@ -104,6 +108,7 @@ func (c Config) Run() error {
 	if via == "" {
 		via = "direct (no outbound proxy)"
 	}
+	log.Printf("  tls    → upstream certificate verification DISABLED (by design)")
 	log.Printf("  via    → %s", via)
 
 	return http.ListenAndServe(c.Listen, nil)
